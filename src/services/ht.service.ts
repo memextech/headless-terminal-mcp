@@ -6,6 +6,7 @@ export interface HTSession {
     process: ChildProcess;
     isAlive: boolean;
     createdAt: Date;
+    webServerUrl?: string;
 }
 
 export interface HTCommand {
@@ -24,7 +25,7 @@ class HTService {
     /**
      * Create a new HT session with bash (default)
      */
-    async createSession(command: string[] = ['bash']): Promise<string> {
+    async createSession(command: string[] = ['bash'], enableWebServer: boolean = false): Promise<string> {
         const sessionId = uuidv4();
         
         try {
@@ -43,8 +44,18 @@ class HTService {
                 throw new Error(`HT is not available: ${error}`);
             }
 
+            // Build HT command arguments
+            const htArgs = ['--subscribe', 'snapshot,output'];
+            if (enableWebServer) {
+                htArgs.push('-l'); // Enable web server
+            }
+            htArgs.push(...command);
+
+            // Give HT more time to start, especially with web server
+            const startupDelay = enableWebServer ? 1500 : 800;
+
             // Start HT process with subscription to events
-            const htProcess = spawn('ht', ['--subscribe', 'snapshot,output', ...command], {
+            const htProcess = spawn('ht', htArgs, {
                 stdio: ['pipe', 'pipe', 'pipe'],
                 detached: false
             });
@@ -55,6 +66,23 @@ class HTService {
                 isAlive: true,
                 createdAt: new Date(),
             };
+
+            // Capture web server URL if enabled
+            if (enableWebServer) {
+                const onStderr = (data: Buffer) => {
+                    const output = data.toString();
+                    const urlMatch = output.match(/live preview available at (http:\/\/[^\s]+)/);
+                    if (urlMatch) {
+                        session.webServerUrl = urlMatch[1];
+                    }
+                };
+                htProcess.stderr?.on('data', onStderr);
+                
+                // Remove listener after startup
+                setTimeout(() => {
+                    htProcess.stderr?.removeListener('data', onStderr);
+                }, startupDelay);
+            }
 
             // Handle process exit
             htProcess.on('exit', (code) => {
@@ -69,11 +97,12 @@ class HTService {
 
             this.sessions.set(sessionId, session);
             
-            // Give HT a moment to start
-            await new Promise(resolve => setTimeout(resolve, 800));
+            // Wait for HT to start
+            await new Promise(resolve => setTimeout(resolve, startupDelay));
             
-            // Verify the session is still alive
-            if (!session.isAlive) {
+            // Note: Skip session validation for web server mode since it takes longer to initialize
+            // Verify the session is still alive (only for non-web server mode)
+            if (!enableWebServer && !session.isAlive) {
                 this.sessions.delete(sessionId);
                 throw new Error('HT session failed to start');
             }

@@ -4,12 +4,15 @@ import { htService } from '../services/ht.service.js';
  */
 export async function createSession(options = {}) {
     try {
-        const sessionId = await htService.createSession(options.command);
+        const sessionId = await htService.createSession(options.command, options.enableWebServer);
+        const session = htService.getSession(sessionId);
         return {
             success: true,
             data: {
                 sessionId,
-                message: 'HT session created successfully'
+                message: 'HT session created successfully',
+                webServerEnabled: options.enableWebServer || false,
+                webServerUrl: session?.webServerUrl
             }
         };
     }

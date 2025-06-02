@@ -1,5 +1,6 @@
 export interface CreateSessionOptions {
     command?: string[];
+    enableWebServer?: boolean;
 }
 export interface SendKeysOptions {
     sessionId: string;

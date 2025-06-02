@@ -2,6 +2,7 @@ import { htService } from '../services/ht.service.js';
 
 export interface CreateSessionOptions {
     command?: string[];
+    enableWebServer?: boolean;
 }
 
 export interface SendKeysOptions {
@@ -29,12 +30,16 @@ export interface ControllerResponse {
  */
 export async function createSession(options: CreateSessionOptions = {}): Promise<ControllerResponse> {
     try {
-        const sessionId = await htService.createSession(options.command);
+        const sessionId = await htService.createSession(options.command, options.enableWebServer);
+        const session = htService.getSession(sessionId);
+        
         return {
             success: true,
             data: {
                 sessionId,
-                message: 'HT session created successfully'
+                message: 'HT session created successfully',
+                webServerEnabled: options.enableWebServer || false,
+                webServerUrl: session?.webServerUrl
             }
         };
     } catch (error) {

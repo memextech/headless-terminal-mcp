@@ -2,7 +2,8 @@ import { z } from 'zod';
 import * as htController from '../controllers/ht.controller.js';
 // Zod schemas for tool arguments
 const CreateSessionArgs = z.object({
-    command: z.array(z.string()).optional().describe('Command to run in the terminal (default: ["bash"])')
+    command: z.array(z.string()).optional().describe('Command to run in the terminal (default: ["bash"])'),
+    enableWebServer: z.boolean().optional().describe('Enable HT web server for live terminal preview (default: false)')
 });
 const SendKeysArgs = z.object({
     sessionId: z.string().describe('HT session ID'),
@@ -21,7 +22,8 @@ const CloseSessionArgs = z.object({
 // Tool handlers
 async function handleCreateSession(args) {
     const result = await htController.createSession({
-        command: args.command
+        command: args.command,
+        enableWebServer: args.enableWebServer
     });
     if (!result.success) {
         return {
@@ -32,10 +34,13 @@ async function handleCreateSession(args) {
             isError: true
         };
     }
+    const webServerInfo = result.data.webServerEnabled
+        ? `\n\n🌐 Web server enabled!${result.data.webServerUrl ? ` View live terminal at: ${result.data.webServerUrl}` : ' Check console for URL.'}`
+        : '';
     return {
         content: [{
                 type: 'text',
-                text: `HT session created successfully!\n\nSession ID: ${result.data.sessionId}\n\nYou can now use this session ID with other HT tools to send commands and take snapshots.`
+                text: `HT session created successfully!\n\nSession ID: ${result.data.sessionId}\n\nYou can now use this session ID with other HT tools to send commands and take snapshots.${webServerInfo}`
             }]
     };
 }
@@ -140,7 +145,7 @@ async function handleCloseSession(args) {
 }
 // Register tools with the MCP server
 export function registerTools(server) {
-    server.tool('ht_create_session', 'Create a new HT (headless terminal) session. Returns a session ID that can be used with other HT tools.', CreateSessionArgs.shape, handleCreateSession);
+    server.tool('ht_create_session', 'Create a new HT (headless terminal) session. Returns a session ID that can be used with other HT tools. Optionally enable web server for live terminal preview.', CreateSessionArgs.shape, handleCreateSession);
     server.tool('ht_send_keys', 'Send keys to an HT session. Keys can include text and special keys like "Enter", "Down", "Up", "^c" (Ctrl+C), etc.', SendKeysArgs.shape, handleSendKeys);
     server.tool('ht_take_snapshot', 'Take a snapshot of the current terminal state. Returns the terminal content as text.', TakeSnapshotArgs.shape, handleTakeSnapshot);
     server.tool('ht_execute_command', 'Execute a command in the terminal and return the output. This combines sending the command + Enter key + taking a snapshot.', ExecuteCommandArgs.shape, handleExecuteCommand);

@@ -4,6 +4,7 @@ export interface HTSession {
     process: ChildProcess;
     isAlive: boolean;
     createdAt: Date;
+    webServerUrl?: string;
 }
 export interface HTCommand {
     type: string;
@@ -18,7 +19,7 @@ declare class HTService {
     /**
      * Create a new HT session with bash (default)
      */
-    createSession(command?: string[]): Promise<string>;
+    createSession(command?: string[], enableWebServer?: boolean): Promise<string>;
     /**
      * Send a command to an HT session
      */

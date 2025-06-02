@@ -27,8 +27,13 @@ class HTService {
             }
             // Build HT command arguments
             const htArgs = ['--subscribe', 'snapshot,output'];
+            let webServerUrl = '';
             if (enableWebServer) {
-                htArgs.push('-l'); // Enable web server
+                // Use a predictable port range starting from 3000 + random offset to avoid conflicts
+                const port = 3000 + Math.floor(Math.random() * 1000) + this.sessions.size;
+                const listenAddr = `127.0.0.1:${port}`;
+                htArgs.push('-l', listenAddr); // Enable web server with specific address
+                webServerUrl = `http://${listenAddr}`;
             }
             htArgs.push(...command);
             // Give HT more time to start, especially with web server
@@ -43,22 +48,8 @@ class HTService {
                 process: htProcess,
                 isAlive: true,
                 createdAt: new Date(),
+                webServerUrl: webServerUrl || undefined,
             };
-            // Capture web server URL if enabled
-            if (enableWebServer) {
-                const onStderr = (data) => {
-                    const output = data.toString();
-                    const urlMatch = output.match(/live preview available at (http:\/\/[^\s]+)/);
-                    if (urlMatch) {
-                        session.webServerUrl = urlMatch[1];
-                    }
-                };
-                htProcess.stderr?.on('data', onStderr);
-                // Remove listener after startup
-                setTimeout(() => {
-                    htProcess.stderr?.removeListener('data', onStderr);
-                }, startupDelay);
-            }
             // Handle process exit
             htProcess.on('exit', (code) => {
                 session.isAlive = false;
@@ -69,7 +60,7 @@ class HTService {
                 this.sessions.delete(sessionId);
             });
             this.sessions.set(sessionId, session);
-            // Wait for HT to start
+            // Wait for HT to start (longer delay for web server)
             await new Promise(resolve => setTimeout(resolve, startupDelay));
             // Note: Skip session validation for web server mode since it takes longer to initialize
             // Verify the session is still alive (only for non-web server mode)

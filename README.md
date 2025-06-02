@@ -1,144 +1,180 @@
-# HT (Headless Terminal) Simple Examples
+# HT MCP Server
 
-This repository contains simple examples of using [HT (headless terminal)](https://github.com/andyk/ht) to automate interactive command-line tools like `npm create-vite`.
+A Model Context Protocol (MCP) server for interacting with HT (headless terminal) sessions. This allows AI assistants to programmatically control and interact with terminal applications through the HT interface.
 
 ## What is HT?
 
-HT (headless terminal) is a Rust-based tool that wraps any binary with a VT100 style terminal interface and allows easy programmatic access to the input and output via JSON over STDIN/STDOUT. It's perfect for automating interactive CLI tools.
+HT (headless terminal) wraps any binary with a VT100 style terminal interface and allows programmatic access via JSON commands. This MCP server provides a clean interface for AI assistants to create HT sessions, send commands, and capture terminal output.
+
+## Prerequisites
+
+- [HT (headless terminal)](https://github.com/andyk/ht) installed and available in PATH
+- Node.js 18+ 
+- TypeScript
 
 ## Installation
 
-Install HT using Cargo:
+```bash
+# Clone and setup
+git clone <this-repo>
+cd ht-mcp-server
+
+# Install dependencies
+npm install
+
+# Build the project
+npm run build
+```
+
+## Usage
+
+### Running the MCP Server
 
 ```bash
-cargo install --git https://github.com/andyk/ht
+# Start the MCP server
+npm start
+
+# Or run in development mode
+npm run dev
 ```
 
-Make sure `$HOME/.cargo/bin` is in your PATH.
+### Available Tools
 
-## Files in this Repository
+The server provides the following MCP tools:
 
-1. **`working_example.py`** - ✅ **RECOMMENDED** - Complete working example that:
-   - Properly captures and displays HT output
-   - Automates `npm create-vite` from start to finish
-   - Shows terminal snapshots at each step
+#### `ht_create_session`
+Create a new HT session.
+- **Arguments**: 
+  - `command` (optional): Array of command arguments (default: `["bash"]`)
+- **Returns**: Session ID for use with other tools
 
-2. **`basic_ht_example.py`** - Comprehensive Python class-based example with:
-   - HTController class for easier interaction
-   - Both basic commands and npm create-vite automation
-   - Queue-based output handling
+#### `ht_send_keys`
+Send keys to an HT session.
+- **Arguments**:
+  - `sessionId`: HT session ID
+  - `keys`: Array of keys/text to send (supports special keys like "Enter", "Down", "^c", etc.)
 
-3. **`minimal_example.py`** - Bare-bones example showing the essential pattern
+#### `ht_take_snapshot`
+Take a snapshot of the current terminal state.
+- **Arguments**:
+  - `sessionId`: HT session ID
+- **Returns**: Current terminal content as text
 
-4. **`quick_test.sh`** - Shell script that pipes JSON commands to HT
+#### `ht_execute_command`
+Execute a command and return the output (convenience method).
+- **Arguments**:
+  - `sessionId`: HT session ID
+  - `command`: Command to execute
+- **Returns**: Terminal output after command execution
 
-5. **`manual_ht_test.sh`** - Reference showing raw JSON commands for manual testing
+#### `ht_list_sessions`
+List all active HT sessions.
+- **Returns**: List of active sessions with metadata
 
-## Running the Examples
+#### `ht_close_session`
+Close an HT session and clean up resources.
+- **Arguments**:
+  - `sessionId`: HT session ID to close
 
-### Python Example (Recommended)
+## Example Workflow
+
+Here's how an AI assistant might use these tools to automate `npm create vite`:
+
+```javascript
+// 1. Create a new HT session
+const session = await ht_create_session({});
+
+// 2. Navigate to a working directory
+await ht_execute_command({
+    sessionId: session.sessionId,
+    command: "cd /tmp && mkdir vite-test && cd vite-test"
+});
+
+// 3. Start npm create vite
+await ht_send_keys({
+    sessionId: session.sessionId,
+    keys: ["npm create vite@latest my-app"]
+});
+await ht_send_keys({
+    sessionId: session.sessionId,
+    keys: ["Enter"]
+});
+
+// 4. Wait and check what prompts appeared
+const snapshot = await ht_take_snapshot({
+    sessionId: session.sessionId
+});
+
+// 5. Respond to prompts based on snapshot content
+if (snapshot.snapshot.includes("framework")) {
+    await ht_send_keys({
+        sessionId: session.sessionId,
+        keys: ["Enter"]  // Select default framework
+    });
+}
+
+// 6. Continue responding to prompts...
+await ht_send_keys({
+    sessionId: session.sessionId,
+    keys: ["Down"]  // Navigate to TypeScript variant
+});
+await ht_send_keys({
+    sessionId: session.sessionId,
+    keys: ["Enter"]  // Select TypeScript
+});
+
+// 7. Verify the project was created
+const result = await ht_execute_command({
+    sessionId: session.sessionId,
+    command: "ls -la"
+});
+
+// 8. Clean up
+await ht_close_session({
+    sessionId: session.sessionId
+});
+```
+
+## Key Features
+
+- **Session Management**: Create and manage multiple HT sessions
+- **Interactive Commands**: Handle interactive CLI tools like `npm create`, `git`, etc.
+- **Terminal Snapshots**: Capture terminal state to understand what's happening
+- **Special Key Support**: Send arrow keys, Ctrl combinations, Enter, etc.
+- **Error Handling**: Robust error handling and session cleanup
+
+## Integration with AI Assistants
+
+This MCP server enables AI assistants to:
+
+- Automate complex interactive CLI workflows
+- Debug terminal applications by taking snapshots
+- Handle multi-step processes that require user input
+- Work with any CLI tool that has interactive prompts
+
+## Development
 
 ```bash
-python3 working_example.py
+# Build
+npm run build
+
+# Development mode with hot reload
+npm run dev
+
+# Lint
+npm run lint
+
+# Clean build artifacts
+npm run clean
 ```
-
-This will:
-1. Start HT with bash
-2. Navigate to a temp directory
-3. Run `npm create-vite` and respond to all prompts automatically
-4. Show terminal snapshots and real-time output
-5. Verify the project was created successfully
-
-### Alternative Examples
-
-```bash
-# Class-based approach with more features
-python3 basic_ht_example.py
-
-# Minimal example showing just the essentials
-python3 minimal_example.py
-
-# Shell script approach
-./quick_test.sh
-```
-
-### Manual Testing
-
-You can test HT manually by running it in interactive mode:
-
-```bash
-# Start HT with event subscriptions
-ht --subscribe snapshot,output bash
-```
-
-Then in the same terminal, type JSON commands like:
-```json
-{"type": "takeSnapshot"}
-{"type": "sendKeys", "keys": ["echo hello"]}
-{"type": "sendKeys", "keys": ["Enter"]}
-{"type": "takeSnapshot"}
-```
-
-## Key HT Commands
-
-### Taking Snapshots
-```json
-{"type": "takeSnapshot"}
-```
-Returns the current terminal state as plain text.
-
-### Sending Keys
-```json
-{"type": "sendKeys", "keys": ["npm create vite@latest"]}
-{"type": "sendKeys", "keys": ["Enter"]}
-```
-Sends keystrokes to the terminal. Supports special keys like "Enter", "Down", "Up", "^c" (Ctrl+C), etc.
-
-### Navigation Keys
-- `"Enter"` - Enter key
-- `"Down"`, `"Up"`, `"Left"`, `"Right"` - Arrow keys  
-- `"Tab"` - Tab key
-- `"^c"` or `"C-c"` - Ctrl+C
-- `"Escape"` - Escape key
-
-## How the npm create-vite Example Works
-
-1. **Setup**: Start HT with bash and subscribe to events
-2. **Navigate**: Go to a temp directory for testing
-3. **Execute**: Run `npm create vite@latest my-app`
-4. **Interact**: Respond to interactive prompts:
-   - Project name (press Enter for default)
-   - Framework selection (arrow keys + Enter)
-   - Variant selection (arrow keys + Enter)
-5. **Verify**: Check that the project was created successfully
-
-## Use Cases
-
-HT is perfect for:
-- **Testing CLI tools** that have interactive prompts
-- **Automating development workflows** 
-- **LLM/AI agents** that need to interact with terminals
-- **CI/CD pipelines** that need to handle interactive commands
-- **Scripting complex terminal interactions**
-
-## Tips
-
-1. **Use snapshots liberally** - They help you understand what's happening
-2. **Add delays** - Give interactive tools time to respond (`time.sleep()`)
-3. **Subscribe to events** - Use `--subscribe snapshot,output` to see what's happening
-4. **Test manually first** - Use the interactive mode to understand the flow
-5. **Handle different terminal states** - Interactive tools may vary in their prompts
 
 ## Troubleshooting
 
-- **Commands not working?** Check that the target tool (npm, etc.) is installed
-- **Prompts different?** Interactive tools may change their prompts between versions
-- **Timing issues?** Add more sleep time between commands
-- **Output not captured?** Make sure you're subscribed to the right events
+1. **HT not found**: Make sure HT is installed and in your PATH
+2. **Session timeouts**: Increase timeout values for slow commands
+3. **Non-JSON output**: The service filters out non-JSON lines automatically
+4. **Process cleanup**: Sessions are automatically cleaned up on server shutdown
 
-## Next Steps
+## License
 
-- Explore the [HT documentation](https://github.com/andyk/ht) for advanced features
-- Try automating other interactive CLI tools
-- Add error handling and retries to your automation scripts
-- Consider using HT's WebSocket API for real-time applications
+ISC

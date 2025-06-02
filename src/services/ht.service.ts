@@ -28,9 +28,25 @@ class HTService {
         const sessionId = uuidv4();
         
         try {
+            // Check if HT is available first
+            try {
+                const testProcess = spawn('ht', ['--version'], { stdio: 'pipe' });
+                await new Promise((resolve, reject) => {
+                    testProcess.on('exit', (code) => {
+                        if (code === 0) resolve(code);
+                        else reject(new Error(`HT not available (exit code: ${code})`));
+                    });
+                    testProcess.on('error', reject);
+                    setTimeout(() => reject(new Error('HT version check timeout')), 2000);
+                });
+            } catch (error) {
+                throw new Error(`HT is not available: ${error}`);
+            }
+
             // Start HT process with subscription to events
             const htProcess = spawn('ht', ['--subscribe', 'snapshot,output', ...command], {
                 stdio: ['pipe', 'pipe', 'pipe'],
+                detached: false
             });
 
             const session: HTSession = {
@@ -43,18 +59,24 @@ class HTService {
             // Handle process exit
             htProcess.on('exit', (code) => {
                 session.isAlive = false;
-                console.log(`HT session ${sessionId} exited with code ${code}`);
+                // Don't log to console - it confuses MCP clients
             });
 
             htProcess.on('error', (error) => {
                 session.isAlive = false;
-                console.error(`HT session ${sessionId} error:`, error);
+                this.sessions.delete(sessionId);
             });
 
             this.sessions.set(sessionId, session);
             
             // Give HT a moment to start
-            await new Promise(resolve => setTimeout(resolve, 500));
+            await new Promise(resolve => setTimeout(resolve, 800));
+            
+            // Verify the session is still alive
+            if (!session.isAlive) {
+                this.sessions.delete(sessionId);
+                throw new Error('HT session failed to start');
+            }
             
             return sessionId;
         } catch (error) {
@@ -78,18 +100,22 @@ class HTService {
     /**
      * Read output from an HT session with timeout
      */
-    async readOutput(sessionId: string, timeoutMs: number = 5000): Promise<HTResponse[]> {
+    async readOutput(sessionId: string, timeoutMs: number = 8000): Promise<HTResponse[]> {
         const session = this.sessions.get(sessionId);
         if (!session || !session.isAlive) {
             throw new Error(`Session ${sessionId} not found or not alive`);
         }
 
-        return new Promise((resolve, reject) => {
+        return new Promise((resolve) => {
             const responses: HTResponse[] = [];
             let buffer = '';
             
-            const timeout = setTimeout(() => {
+            const cleanup = () => {
                 session.process.stdout?.removeListener('data', onData);
+            };
+
+            const timeout = setTimeout(() => {
+                cleanup();
                 resolve(responses);
             }, timeoutMs);
 
@@ -111,23 +137,16 @@ class HTService {
             };
 
             session.process.stdout?.on('data', onData);
-
-            // Clean up after timeout or when we get data
-            setTimeout(() => {
-                clearTimeout(timeout);
-                session.process.stdout?.removeListener('data', onData);
-                resolve(responses);
-            }, timeoutMs);
         });
     }
 
     /**
      * Execute a command and wait for output
      */
-    async executeCommand(sessionId: string, command: HTCommand, timeoutMs: number = 5000): Promise<HTResponse[]> {
+    async executeCommand(sessionId: string, command: HTCommand, timeoutMs: number = 8000): Promise<HTResponse[]> {
         await this.sendCommand(sessionId, command);
         // Small delay to let command process
-        await new Promise(resolve => setTimeout(resolve, 100));
+        await new Promise(resolve => setTimeout(resolve, 200));
         return await this.readOutput(sessionId, timeoutMs);
     }
 
@@ -135,14 +154,63 @@ class HTService {
      * Take a snapshot of the terminal
      */
     async takeSnapshot(sessionId: string): Promise<string> {
-        const responses = await this.executeCommand(sessionId, { type: 'takeSnapshot' });
-        
-        const snapshotResponse = responses.find(r => r.type === 'snapshot');
-        if (snapshotResponse && snapshotResponse.data && snapshotResponse.data.text) {
-            return snapshotResponse.data.text;
+        const session = this.sessions.get(sessionId);
+        if (!session || !session.isAlive) {
+            throw new Error(`Session ${sessionId} not found or not alive`);
         }
-        
-        throw new Error('No snapshot data received');
+
+        return new Promise((resolve, reject) => {
+            let buffer = '';
+            let snapshotReceived = false;
+            
+            const onData = (data: Buffer) => {
+                buffer += data.toString();
+                const lines = buffer.split('\n');
+                buffer = lines.pop() || '';
+
+                for (const line of lines) {
+                    if (line.trim()) {
+                        try {
+                            const response = JSON.parse(line.trim());
+                            if (response.type === 'snapshot' && response.data) {
+                                snapshotReceived = true;
+                                cleanup();
+                                
+                                if (response.data.text) {
+                                    resolve(response.data.text);
+                                } else if (response.data.seq) {
+                                    resolve(response.data.seq);
+                                } else {
+                                    reject(new Error('Snapshot data missing text/seq fields'));
+                                }
+                                return;
+                            }
+                        } catch (error) {
+                            // Ignore non-JSON lines
+                        }
+                    }
+                }
+            };
+
+            const cleanup = () => {
+                session.process.stdout?.removeListener('data', onData);
+                clearTimeout(timeout);
+            };
+
+            const timeout = setTimeout(() => {
+                cleanup();
+                if (!snapshotReceived) {
+                    reject(new Error('Snapshot timeout - no response received'));
+                }
+            }, 8000);
+
+            // Listen for data
+            session.process.stdout?.on('data', onData);
+            
+            // Send the snapshot command
+            const commandJson = JSON.stringify({ type: 'takeSnapshot' }) + '\n';
+            session.process.stdin?.write(commandJson);
+        });
     }
 
     /**

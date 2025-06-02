@@ -1,11 +1,11 @@
 {
-  "name": "ht-mcp-server",
+  "name": "headless-terminal-mcp",
   "version": "1.0.0",
   "description": "Model Context Protocol server for HT (headless terminal) interactions",
   "main": "dist/index.js",
   "type": "module",
   "bin": {
-    "ht-mcp": "dist/index.js"
+    "headless-terminal-mcp": "dist/index.js"
   },
   "scripts": {
     "build": "tsc",
@@ -22,8 +22,12 @@
     "automation",
     "ai"
   ],
-  "author": "",
-  "license": "ISC",
+  "author": "Memex Technologies",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/memextech/headless-terminal-mcp.git"
+  },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.12.1",
     "uuid": "^11.1.0",

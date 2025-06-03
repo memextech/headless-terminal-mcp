@@ -4,7 +4,7 @@ A Model Context Protocol (MCP) server for interacting with HT (headless terminal
 
 ## What is HT?
 
-HT (headless terminal) wraps any binary with a VT100 style terminal interface and allows programmatic access via JSON commands. This MCP server provides a clean interface for AI assistants to create HT sessions, send commands, and capture terminal output.
+[HT](https://github.com/andyk/ht) is a project by Andy Konwinski and is the real magic behind this project. It wraps any binary with a VT100 style terminal interface and allows programmatic access via JSON commands. This MCP server provides a clean interface for AI assistants to create HT sessions, send commands, and capture terminal output.
 
 ## Prerequisites
 
